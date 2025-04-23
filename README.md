@@ -1,3 +1,5 @@
+# Tigo MQTT Bridge
+
 A Python-based bridge between Tigo TAP (Tigo Access Point) solar monitoring hardware and MQTT. This tool allows you to receive real-time data from Tigo optimizers and publish it to an MQTT broker for integration with home automation systems, data logging, or custom monitoring solutions.
 
 ## Features
