@@ -502,20 +502,27 @@ class MQTTBridge:
             # Publish to MQTT
             topic = f"{self.args.mqtt_prefix}/{address_str}"
             self.mqtt_client.publish(topic, json.dumps(payload), qos=0, retain=True)
-            logger.info(f"Published power report for node {node_id.value}: {report}")
+            logger.debug(f"Published power report for node {node_id.value}: {report}")
     
     def process_topology_report(self, gateway_id, node_id, address):
         """Process topology report to update node table"""
         # Debug logging
         logger.debug(f"Processing topology report: gateway_id={gateway_id}, node_id={node_id}, address_type={type(address)}")
         
-        if not isinstance(address, bytes):
+        # Accept both bytes and bytearray types
+        if not isinstance(address, (bytes, bytearray)):
             # Convert LongAddress to bytes if needed
             if hasattr(address, 'bytes'):
                 address = address.bytes
             else:
+                # Log the problematic packet with more details at INFO level
+                logger.info(f"Topology report with invalid format: gateway_id={gateway_id}, node_id={node_id}, address={address!r}, address_type={type(address)}")
                 logger.warning(f"Couldn't process topology report: invalid address format")
                 return
+        
+        # Convert to bytes if it's a bytearray, to ensure consistency
+        if isinstance(address, bytearray):
+            address = bytes(address)
                 
         self.node_table[node_id.value] = address
         logger.info(f"Node Table Updated: Node {node_id.value} -> {stringhex(address, ':')}")
@@ -694,7 +701,7 @@ class MQTTBridgeSink:
             rssi = data[12] if len(data) >= 13 else None
             
             # Log the parsed values
-            logger.info(f"Parsed power report: NodeID={node_id.value}, " +
+            logger.debug(f"Parsed power report: NodeID={node_id.value}, " +
                         f"VIN={vin:.2f}V, VOUT={vout:.2f}V, " + 
                         f"I={current:.3f}A, T={temperature:.1f}°C, RSSI={rssi}")
             
@@ -718,18 +725,24 @@ class MQTTBridgeSink:
     
     def _handle_topology_report(self, node_id, data, gateway_id):
         """Process a topology report packet"""
+        # Log the raw topology report data at INFO level
+        logger.info(f"Received topology report: node_id={node_id.value}, gateway_id={gateway_id}, data_length={len(data)}, raw_data={data.hex()}")
+        
         if len(data) < 16:
+            logger.info(f"Topology report too short: expected at least 16 bytes, got {len(data)} bytes")
             return
             
         try:
-            # Extract long address (MAC)
+            # Extract long address (MAC) - bytes 8-16
             long_address = data[8:16]
+            logger.info(f"Extracted long address: {stringhex(long_address, ':')}")
             
-            # Update node table - FIX: Pass gateway_id directly, not frame
+            # Update node table
             self.bridge.process_topology_report(gateway_id, node_id, long_address)
             
         except Exception as e:
             logger.error(f"Error parsing topology report: {e}")
+            
 
 def parse_args():
     """Parse command line arguments"""
